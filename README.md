@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout packaging configuration
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run Makefile packaging target
         uses: galatek-zhengdong/ci-build-action@v1
