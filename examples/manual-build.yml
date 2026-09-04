@@ -1,0 +1,48 @@
+name: Build image
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: Project directory under build-projects.
+        required: true
+        default: example-service
+        type: choice
+        options:
+          - example-service
+          - example-web
+          - example-worker
+      target:
+        description: Make target.
+        required: true
+        default: develop
+        type: choice
+        options:
+          - develop
+          - test
+          - demo
+          - release
+          - kunpeng
+      clone:
+        description: Run make clone before target.
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ci-build
+        uses: actions/checkout@v4
+
+      - name: Run ci-build Makefile
+        uses: galatek-zhengdong/ci-build-action@v1
+        with:
+          project-dir: build-projects/${{ inputs.project }}
+          target: ${{ inputs.target }}
+          clone: ${{ inputs.clone }}
+          docker-registry: registry.example.com
+          docker-username: ${{ secrets.REGISTRY_USERNAME }}
+          docker-password: ${{ secrets.REGISTRY_PASSWORD }}
+          ssh-private-key: ${{ secrets.SOURCE_REPO_SSH_KEY }}

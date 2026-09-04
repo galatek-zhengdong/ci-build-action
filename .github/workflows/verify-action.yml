@@ -1,0 +1,39 @@
+name: Verify action
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate action metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f action.yml
+          grep -q "using: composite" action.yml
+          grep -q "make -C" action.yml
+          grep -q "docker login" action.yml
+
+      - name: Validate examples
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f examples/manual-build.yml
+          grep -q "galatek-zhengdong/ci-build-action@v1" examples/manual-build.yml
+
+      - name: Validate docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f docs/execution-contract.md
+          grep -q "Execution Contract" docs/execution-contract.md

@@ -1,0 +1,145 @@
+name: Makefile Image Builder
+description: Run the existing ci-build Makefile packaging targets in GitHub Actions.
+
+branding:
+  icon: package
+  color: blue
+
+inputs:
+  project-dir:
+    description: Directory that contains the project Makefile, for example build-projects/example-service.
+    required: true
+  target:
+    description: Make target to run, for example develop, test, demo, release, or kunpeng.
+    required: false
+    default: develop
+  make-args:
+    description: Extra arguments appended to the make command.
+    required: false
+    default: ""
+  clone:
+    description: Run make clone before the target. This is useful on fresh GitHub-hosted runners.
+    required: false
+    default: "true"
+  docker-registry:
+    description: Docker registry host. Leave empty to skip docker login.
+    required: false
+    default: ""
+  docker-username:
+    description: Docker registry username.
+    required: false
+    default: ""
+  docker-password:
+    description: Docker registry password or token.
+    required: false
+    default: ""
+  ssh-private-key:
+    description: SSH private key used by Makefile git clone or pull commands.
+    required: false
+    default: ""
+  ssh-known-hosts:
+    description: Known hosts entries appended to ~/.ssh/known_hosts.
+    required: false
+    default: ""
+  ssh-keyscan-hosts:
+    description: Comma or newline separated hosts to scan with ssh-keyscan when ssh-known-hosts is empty.
+    required: false
+    default: "github.com"
+
+outputs:
+  project-dir:
+    description: Makefile project directory.
+    value: ${{ inputs['project-dir'] }}
+  target:
+    description: Executed make target.
+    value: ${{ inputs.target }}
+  make-command:
+    description: The make command executed for the build target.
+    value: ${{ steps.make.outputs.make_command }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate inputs
+      shell: bash
+      env:
+        PROJECT_DIR: ${{ inputs['project-dir'] }}
+        TARGET: ${{ inputs.target }}
+      run: |
+        set -euo pipefail
+        if [ ! -d "$PROJECT_DIR" ]; then
+          echo "project-dir does not exist: $PROJECT_DIR" >&2
+          exit 1
+        fi
+        if [ ! -f "$PROJECT_DIR/Makefile" ]; then
+          echo "Makefile does not exist under project-dir: $PROJECT_DIR" >&2
+          exit 1
+        fi
+        if [ -z "$TARGET" ]; then
+          echo "target is required." >&2
+          exit 1
+        fi
+
+    - name: Configure SSH
+      if: ${{ inputs['ssh-private-key'] != '' }}
+      shell: bash
+      env:
+        SSH_PRIVATE_KEY: ${{ inputs['ssh-private-key'] }}
+        SSH_KNOWN_HOSTS: ${{ inputs['ssh-known-hosts'] }}
+        SSH_KEYSCAN_HOSTS: ${{ inputs['ssh-keyscan-hosts'] }}
+      run: |
+        set -euo pipefail
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+
+        key_file="$HOME/.ssh/ci-build-action"
+        printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_file"
+        chmod 600 "$key_file"
+
+        if [ -n "$SSH_KNOWN_HOSTS" ]; then
+          printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+        else
+          printf '%s\n' "$SSH_KEYSCAN_HOSTS" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | while IFS= read -r host; do
+            ssh-keyscan -H "$host" >> ~/.ssh/known_hosts 2>/dev/null
+          done
+        fi
+
+        eval "$(ssh-agent -s)"
+        ssh-add "$key_file"
+        {
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID"
+        } >> "$GITHUB_ENV"
+
+    - name: Login to Docker registry
+      if: ${{ inputs['docker-registry'] != '' && inputs['docker-username'] != '' && inputs['docker-password'] != '' }}
+      shell: bash
+      env:
+        DOCKER_REGISTRY: ${{ inputs['docker-registry'] }}
+        DOCKER_USERNAME: ${{ inputs['docker-username'] }}
+        DOCKER_PASSWORD: ${{ inputs['docker-password'] }}
+      run: |
+        set -euo pipefail
+        printf '%s' "$DOCKER_PASSWORD" | docker login "$DOCKER_REGISTRY" --username "$DOCKER_USERNAME" --password-stdin
+
+    - name: Clone build source
+      if: ${{ inputs.clone == 'true' }}
+      shell: bash
+      env:
+        PROJECT_DIR: ${{ inputs['project-dir'] }}
+      run: |
+        set -euo pipefail
+        make -C "$PROJECT_DIR" clone
+
+    - name: Run Makefile build target
+      id: make
+      shell: bash
+      env:
+        PROJECT_DIR: ${{ inputs['project-dir'] }}
+        TARGET: ${{ inputs.target }}
+        MAKE_ARGS: ${{ inputs['make-args'] }}
+      run: |
+        set -euo pipefail
+        make_command="make -C $PROJECT_DIR $TARGET $MAKE_ARGS"
+        echo "make_command=$make_command" >> "$GITHUB_OUTPUT"
+        make -C "$PROJECT_DIR" "$TARGET" $MAKE_ARGS
