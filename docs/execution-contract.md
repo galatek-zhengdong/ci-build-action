@@ -21,6 +21,8 @@ The action can prepare two shared runtime concerns before invoking Make:
 
 Both are optional. If the corresponding inputs are empty, the action skips that setup step.
 
+The built-in Docker login step supports one registry. Workflows that need multiple registries should run additional `docker login` steps before invoking this action. Those credentials remain available in the runner's Docker config for the Makefile commands executed by this action.
+
 ## Command Order
 
 When `clone` is `true`, the action runs:

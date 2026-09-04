@@ -63,6 +63,46 @@ jobs:
 
 See [examples/manual-build.yml](examples/manual-build.yml) for a longer workflow example.
 
+## Multiple Registries
+
+The action has built-in inputs for one Docker registry login. When a build target needs access to multiple registries, log in to the additional registries in the caller workflow before running this action. Docker stores those credentials in the runner's Docker config, so the Makefile can use them during the later build and push commands.
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout packaging configuration
+        uses: actions/checkout@v5
+
+      - name: Login to source image registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "${{ secrets.SOURCE_REGISTRY_PASSWORD }}" \
+            | docker login registry.source.example.com \
+              --username "${{ secrets.SOURCE_REGISTRY_USERNAME }}" \
+              --password-stdin
+
+      - name: Login to release image registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "${{ secrets.RELEASE_REGISTRY_PASSWORD }}" \
+            | docker login registry.release.example.com \
+              --username "${{ secrets.RELEASE_REGISTRY_USERNAME }}" \
+              --password-stdin
+
+      - name: Run Makefile packaging target
+        uses: galatek-zhengdong/ci-build-action@v1
+        with:
+          project-dir: build-projects/${{ inputs.project }}
+          target: ${{ inputs.target }}
+          ssh-private-key: ${{ secrets.SOURCE_REPO_SSH_KEY }}
+```
+
+You can still use `docker-registry`, `docker-username`, and `docker-password` for one registry, then add extra `docker login` steps for the others.
+
 ## Execution
 
 With default inputs, the action runs:
